@@ -1,0 +1,81 @@
+name: Publish dashboard to GitHub Pages
+
+# Free static hosting for the dashboard (part of your GitHub Student Pack).
+# The bot itself still runs on your VM — this only publishes the web page and
+# points it at the VM's public HTTPS address.
+#
+# One-time setup:
+#   1. Repo → Settings → Pages → Source: "GitHub Actions"
+#   2. Repo → Settings → Secrets and variables → Actions → Variables
+#      add BOT_GATEWAY = https://bot.arterex.me   (your VM's HTTPS address)
+#   3. On the VM, add this Pages URL to ALLOWED_ORIGINS in .env and restart.
+#
+# Without BOT_GATEWAY the job stops itself rather than publishing a page that
+# cannot reach anything.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.gate.outputs.configured }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is BOT_GATEWAY set?
+        id: gate
+        env:
+          GW: ${{ vars.BOT_GATEWAY }}
+        run: |
+          if [ -z "$GW" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Add the BOT_GATEWAY repository variable (e.g. https://bot.arterex.me) to publish."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "gateway=$GW" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Point the dashboard at the VM
+        if: steps.gate.outputs.configured == 'true'
+        env:
+          GW: ${{ steps.gate.outputs.gateway }}
+        run: |
+          mkdir -p site
+          cp -r public/. site/
+          # Rewrite only the gateway line, keep everything else as-is.
+          sed -i "s|gateway: ''|gateway: '$GW'|" site/config.js
+          grep -n "gateway:" site/config.js
+          # A 404 page keeps GitHub Pages from showing its own error.
+          cp site/index.html site/404.html
+
+      - uses: actions/configure-pages@v5
+        if: steps.gate.outputs.configured == 'true'
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.gate.outputs.configured == 'true'
+        with:
+          path: site
+
+  deploy:
+    if: needs.build.outputs.configured == 'true'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
