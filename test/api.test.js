@@ -23,6 +23,10 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const http = require('node:http')
 
+// The `ws` client is used instead of the global WebSocket because Node 20 only
+// exposes that behind --experimental-websocket.
+const WSClient = require('ws')
+
 const { config } = require('../src/config')
 const { Store } = require('../src/store')
 const { createServer, RateLimiter } = require('../src/server')
@@ -86,42 +90,63 @@ async function boot () {
 
 const json = (res) => res.json()
 
-function openSocket (url) {
+function openSocket (url, options) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url)
-    const timer = setTimeout(() => reject(new Error('socket timeout')), 4000)
-    ws.addEventListener('open', () => {
+    const ws = new WSClient(url, options)
+    // Buffer every frame from the moment we connect: the server sends `hello`
+    // immediately, which can land before a test attaches its own listener.
+    ws.frames = []
+    ws.waiters = []
+    ws.on('message', (data) => {
+      let msg
+      try {
+        msg = JSON.parse(data.toString())
+      } catch {
+        return
+      }
+      ws.frames.push(msg)
+      for (const w of ws.waiters.slice()) {
+        if (w.pred(msg)) {
+          ws.waiters = ws.waiters.filter((x) => x !== w)
+          ws.frames = ws.frames.filter((f) => f !== msg)
+          clearTimeout(w.timer)
+          w.resolve(msg)
+        }
+      }
+    })
+
+    const timer = setTimeout(() => {
+      ws.terminate()
+      reject(new Error('socket timeout'))
+    }, 4000)
+    ws.once('open', () => {
       clearTimeout(timer)
       resolve(ws)
     })
-    ws.addEventListener('error', (e) => {
+    ws.once('error', (err) => {
       clearTimeout(timer)
-      reject(e.error || e)
+      reject(err)
     })
   })
 }
 
-/** Collect messages until one satisfies `pred` (or timeout). */
+/** Resolve with the first buffered or incoming frame matching `pred`. */
 function waitFor (ws, pred, timeout = 3000) {
+  const hit = ws.frames.find(pred)
+  if (hit) {
+    ws.frames = ws.frames.filter((f) => f !== hit)
+    return Promise.resolve(hit)
+  }
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      ws.removeEventListener('message', onMsg)
-      reject(new Error('timed out waiting for websocket message'))
-    }, timeout)
-    const onMsg = (ev) => {
-      let msg
-      try {
-        msg = JSON.parse(ev.data)
-      } catch {
-        return
-      }
-      if (pred(msg)) {
-        clearTimeout(timer)
-        ws.removeEventListener('message', onMsg)
-        resolve(msg)
-      }
+    const waiter = {
+      pred,
+      resolve,
+      timer: setTimeout(() => {
+        ws.waiters = ws.waiters.filter((w) => w !== waiter)
+        reject(new Error('timed out waiting for a websocket frame'))
+      }, timeout)
     }
-    ws.addEventListener('message', onMsg)
+    ws.waiters.push(waiter)
   })
 }
 
@@ -276,7 +301,7 @@ test('websocket: hello replays history and streams new lines', async (t) => {
   app.store.push({ kind: 'chat', author: 'Alex', text: 'before connect' })
 
   const ws = await openSocket(`${app.wsBase}/ws?token=${encodeURIComponent(config.web.chatToken)}`)
-  t.after(() => ws.close())
+  t.after(() => { try { ws.close() } catch { /* already gone */ } })
 
   const hello = await waitFor(ws, (m) => m.type === 'hello')
   assert.equal(hello.you.authenticated, true)
@@ -296,7 +321,7 @@ test('websocket: chat round-trip returns an ack', async (t) => {
   t.after(app.close)
 
   const ws = await openSocket(`${app.wsBase}/ws?token=${encodeURIComponent(config.web.chatToken)}`)
-  t.after(() => ws.close())
+  t.after(() => { try { ws.close() } catch { /* already gone */ } })
   await waitFor(ws, (m) => m.type === 'hello')
 
   const ack = waitFor(ws, (m) => m.type === 'ack' && m.id === 'x1')
@@ -311,7 +336,7 @@ test('websocket: unauthenticated clients cannot send', async (t) => {
   t.after(app.close)
 
   const ws = await openSocket(`${app.wsBase}/ws`)
-  t.after(() => ws.close())
+  t.after(() => { try { ws.close() } catch { /* already gone */ } })
   const hello = await waitFor(ws, (m) => m.type === 'hello')
   assert.equal(hello.you.authenticated, false)
 
@@ -335,10 +360,10 @@ test('websocket: unauthenticated clients cannot send', async (t) => {
 test('websocket: foreign origins are rejected', async (t) => {
   const app = await boot()
   t.after(app.close)
-  const ws = new WebSocket(`${app.wsBase}/ws`, { headers: { Origin: 'https://evil.example' } })
+  const ws = new WSClient(`${app.wsBase}/ws`, { headers: { Origin: 'https://evil.example' } })
   const closed = await new Promise((resolve) => {
-    ws.addEventListener('close', (ev) => resolve(ev.code))
-    ws.addEventListener('error', () => resolve('error'))
+    ws.once('close', (code) => resolve(code))
+    ws.once('error', () => resolve('error'))
     setTimeout(() => resolve('timeout'), 3000)
   })
   assert.equal(closed, 4003)
@@ -348,7 +373,7 @@ test('websocket: sync catches a client up after a gap', async (t) => {
   const app = await boot()
   t.after(app.close)
   const ws = await openSocket(`${app.wsBase}/ws`)
-  t.after(() => ws.close())
+  t.after(() => { try { ws.close() } catch { /* already gone */ } })
   const hello = await waitFor(ws, (m) => m.type === 'hello')
 
   app.store.push({ kind: 'chat', text: 'missed line' })
