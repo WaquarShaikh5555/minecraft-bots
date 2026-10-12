@@ -110,7 +110,7 @@ ssh -L 8080:localhost:8080 azureuser@<vm-ip>     # then open http://localhost:80
 journalctl -u minecraft-bot -n 100 --no-pager
 ```
 Almost always one of: missing `.env`, wrong `CHAT_TOKEN` characters (no spaces!),
-`EADDRINUSE` (something else on the port), or Node < 20.
+`EADDRINUSE` (something else on the port), or Node < 22.
 
 ### `Error: listen EADDRINUSE: address already in use :::8080`
 ```bash

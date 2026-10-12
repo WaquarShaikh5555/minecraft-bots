@@ -7,6 +7,8 @@ real time, and talk back through it from any browser.
 Built for `world.arterex.me`, works with any Java server (1.8.8 → 1.21.11 / 26.1),
 offline/cracked **or** premium, and deploys to a free Azure student VM.
 
+Requires **Node 22+** (Mineflayer 4.39 dropped older runtimes).
+
 ```
 ┌─────────────┐   Minecraft protocol    ┌──────────────────┐   WebSocket    ┌──────────┐
 │ MC server   │◄───────────────────────►│  this app (VM)   │◄──────────────►│ browser  │

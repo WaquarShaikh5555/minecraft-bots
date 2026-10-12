@@ -22,3 +22,6 @@ logs/
 .idea/
 .DS_Store
 Thumbs.db
+
+# CI artefacts
+test-output.txt

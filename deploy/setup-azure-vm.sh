@@ -75,7 +75,7 @@ done
 command -v curl >/dev/null || die "curl is required"
 
 # ── 1. Node.js ───────────────────────────────────────────────────────────────
-if command -v node >/dev/null && [[ "$(node -v | cut -d. -f1 | tr -d v)" -ge 20 ]]; then
+if command -v node >/dev/null && [[ "$(node -v | cut -d. -f1 | tr -d v)" -ge 22 ]]; then
   say "Node $(node -v) already installed"
 else
   say "Installing Node.js $NODE_MAJOR"

@@ -1,11 +1,11 @@
 {
   "name": "minecraft-bots",
   "version": "1.0.0",
-  "description": "Headless Minecraft Java bot (Mineflayer) with a live web chat bridge — watch and talk to the server from any browser.",
+  "description": "Headless Minecraft Java bot (Mineflayer) with a live web chat bridge \u2014 watch and talk to the server from any browser.",
   "main": "src/index.js",
   "type": "commonjs",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "start": "node src/index.js",

@@ -14,7 +14,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['20', '22']
+        # mineflayer 4.39 / minecraft-protocol 1.68 require Node >= 22
+        node: ['22', '24']
     steps:
       - uses: actions/checkout@v4
 
@@ -24,7 +25,27 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: npm test
+
+      - name: Test
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test-output.txt
+
+      # Node's TAP output is hard to read in the Actions log; surface the
+      # failing tests as annotations that show up on the PR itself.
+      - name: Annotate failures
+        if: failure()
+        shell: bash
+        run: |
+          grep -E "^not ok |^  error: |^  expected: |^  actual: |failureType" test-output.txt \
+            | head -60 \
+            | sed -e 's/%/%25/g' -e 's/\r//g' \
+            | while IFS= read -r line; do printf '::error::%s\n' "$line"; done
+          echo "### Failing tests" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -E "^not ok " test-output.txt | head -20 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Boot the dashboard in demo mode and probe it
         run: |

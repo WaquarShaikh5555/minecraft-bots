@@ -132,4 +132,4 @@ Genuinely-free alternatives for a 24/7 bot:
   Cloudflare tunnel. Costs nothing, needs your home network to stay up.
 - **Google Cloud e2-micro** — free forever in 3 US regions (needs a card).
 
-Anything that runs Node 20+ works; the whole `deploy/` folder is portable.
+Anything that runs Node 22+ works (Mineflayer requires it); the whole `deploy/` folder is portable.
