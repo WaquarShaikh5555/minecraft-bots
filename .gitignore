@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+.npm/
+package-lock.json.bak
+
+# Secrets / local config — NEVER commit your .env
+.env
+.env.local
+.env.*.local
+
+# Runtime data (chat logs, cached state)
+data/
+logs/
+*.log
+
+# Cached Microsoft/Minecraft auth profiles
+.mc-profiles/
+.minecraft/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# CI artefacts
+test-output.txt

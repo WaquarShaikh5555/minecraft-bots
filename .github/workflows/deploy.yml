@@ -1,0 +1,74 @@
+name: Deploy to VM
+
+# Pushes to main are deployed to your Azure VM over SSH.
+# It skips itself until you add these repository secrets:
+#   VM_HOST      public IP or DNS name of the VM   (e.g. 20.40.11.7)
+#   VM_USER      ssh user                          (e.g. azureuser)
+#   VM_SSH_KEY   the PRIVATE key (whole file) that matches the VM's authorized_keys
+# Optional:
+#   VM_PORT      ssh port, default 22
+#   APP_DIR      install dir on the VM, default /opt/minecraft-bots
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to deploy
+        default: main
+
+concurrency:
+  group: deploy-vm
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Deploy over SSH
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Are the deploy secrets configured?
+        id: check
+        env:
+          HOST: ${{ secrets.VM_HOST }}
+          KEY: ${{ secrets.VM_SSH_KEY }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$KEY" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::VM_HOST / VM_SSH_KEY are not set, so nothing was deployed. See docs/azure-vm.md."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy
+        if: steps.check.outputs.configured == 'true'
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_USER: ${{ secrets.VM_USER }}
+          VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+          VM_PORT: ${{ secrets.VM_PORT }}
+          APP_DIR: ${{ secrets.APP_DIR }}
+          BRANCH: ${{ github.event.inputs.branch || github.ref_name }}
+        run: |
+          set -euo pipefail
+          VM_USER="${VM_USER:-azureuser}"
+          VM_PORT="${VM_PORT:-22}"
+          APP_DIR="${APP_DIR:-/opt/minecraft-bots}"
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$VM_SSH_KEY" > ~/.ssh/vm_key
+          chmod 600 ~/.ssh/vm_key
+          ssh-keyscan -p "$VM_PORT" -H "$VM_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          echo "→ deploying $BRANCH to $VM_USER@$VM_HOST:$APP_DIR"
+          ssh -i ~/.ssh/vm_key -p "$VM_PORT" -o BatchMode=yes "$VM_USER@$VM_HOST" \
+            "APP_DIR='$APP_DIR' BRANCH='$BRANCH' bash -s" < deploy/remote-update.sh
+
+          ssh -i ~/.ssh/vm_key -p "$VM_PORT" -o BatchMode=yes "$VM_USER@$VM_HOST" \
+            "curl -fsS http://127.0.0.1:8080/healthz || true"

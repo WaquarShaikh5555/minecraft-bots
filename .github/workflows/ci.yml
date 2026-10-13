@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:   # reused by deploy.yml so tests gate every deployment
+
+jobs:
+  test:
+    name: Test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # mineflayer 4.39 / minecraft-protocol 1.68 require Node >= 22
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Test
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test-output.txt
+
+      # Node's TAP output is hard to read in the Actions log; surface the
+      # failing tests as annotations that show up on the PR itself.
+      - name: Annotate failures
+        if: failure()
+        shell: bash
+        run: |
+          grep -E "^not ok |^  error: |^  expected: |^  actual: |failureType" test-output.txt \
+            | head -60 \
+            | sed -e 's/%/%25/g' -e 's/\r//g' \
+            | while IFS= read -r line; do printf '::error::%s\n' "$line"; done
+          echo "### Failing tests" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -E "^not ok " test-output.txt | head -20 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Boot the dashboard in demo mode and probe it
+        run: |
+          node src/index.js --demo &
+          APP_PID=$!
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8080/healthz && break || sleep 1
+          done
+          curl -fsS http://127.0.0.1:8080/healthz
+          curl -fsS http://127.0.0.1:8080/api/config
+          curl -fsS -o /dev/null -w "dashboard HTTP %{http_code}\n" http://127.0.0.1:8080/
+          kill $APP_PID

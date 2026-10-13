@@ -1,0 +1,42 @@
+[Unit]
+Description=Minecraft bot + live chat bridge (waquar5555)
+Documentation=https://github.com/WaquarShaikh5555/minecraft-bots
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=minecraft
+Group=minecraft
+WorkingDirectory=/opt/minecraft-bots
+
+# Configuration comes from /opt/minecraft-bots/.env (read by src/config.js).
+# You can also uncomment the next line to have systemd apply it too, but then
+# every value must be plain KEY=VALUE without spaces unless double-quoted.
+# EnvironmentFile=/opt/minecraft-bots/.env
+
+ExecStart=/usr/bin/node /opt/minecraft-bots/src/index.js
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+
+# ── logging: journalctl -u minecraft-bot -f ──
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mc-bot
+
+# ── hardening (the bot only needs the network and its own folder) ──
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/minecraft-bots/data /opt/minecraft-bots/.mc-profiles
+MemoryMax=600M
+TasksMax=256
+LimitNOFILE=8192
+
+[Install]
+WantedBy=multi-user.target

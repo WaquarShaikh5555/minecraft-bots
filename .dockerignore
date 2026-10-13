@@ -1,0 +1,16 @@
+node_modules
+.git
+.github
+.env
+.env.*
+!.env.example
+data
+logs
+*.log
+.mc-profiles
+docs
+deploy
+test
+Dockerfile
+docker-compose.yml
+README.md

@@ -1,0 +1,35 @@
+# docker compose up -d
+#
+# Reads .env from this folder. Volumes keep the chat log and any cached
+# Microsoft login across container restarts.
+services:
+  minecraft-bot:
+    build: .
+    image: minecraft-bot:latest
+    container_name: waquar5555
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - bot-data:/app/data
+      - bot-profiles:/app/.mc-profiles
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    # The bot only needs outbound TCP; keep it off the host network.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  bot-data:
+  bot-profiles:
